@@ -2473,185 +2473,126 @@ function findColumn(headers,candidates){
 
 function getStatus(row,columns){
 
-  const notAnswers = [];
+  const rawValues = [];
 
-  const yesAnswers = [];
-
-  const questionAnswers = [];
-
-
-  /*
-    Separate the possible fields.
-
-    IMPORTANT:
-    We never search the whole row because the guest's
-    message/wish can contain words such as "yes", "coming",
-    "miss", etc.
-  */
-
-
-  if(columns.notAttending !== -1){
-
-    const value =
-      normalizeText(row[columns.notAttending]);
-
-    if(value){
-      notAnswers.push(value);
+  if(Array.isArray(row.raw)){
+    for(const value of row.raw){
+      const normalized = normalizeText(value);
+      if(normalized){
+        rawValues.push(normalized);
+      }
     }
-
   }
 
 
-  if(columns.attending !== -1){
-
-    const value =
-      normalizeText(row[columns.attending]);
-
-    if(value){
-      yesAnswers.push(value);
-    }
-
-  }
-
-
-  if(columns.question !== -1){
-
-    const value =
-      normalizeText(row[columns.question]);
-
-    if(value){
-      questionAnswers.push(value);
-    }
-
-  }
+  const answerSet =
+    [
+      ...(columns.notAttending !== -1
+        ? [normalizeText(row[columns.notAttending])]
+        : []),
+      ...(columns.attending !== -1
+        ? [normalizeText(row[columns.attending])]
+        : []),
+      ...(columns.question !== -1
+        ? [normalizeText(row[columns.question])]
+        : []),
+      ...rawValues
+    ].filter(Boolean);
 
 
-  const checkBooleanValue = (value) => {
-    if(!value){
-      return null;
-    }
+  const hasNotAnswer = (value) => {
+    const text = normalizeText(value);
 
-    const normalized = normalizeText(value);
-
-    if(
-      normalized === "true" ||
-      normalized === "yes" ||
-      normalized === "1"
-    ){
-      return "attending";
+    if(!text){
+      return false;
     }
 
     if(
-      normalized === "false" ||
-      normalized === "no" ||
-      normalized === "0"
+      text === "false" ||
+      text === "no" ||
+      text === "0"
     ){
-      return "not";
+      return true;
     }
 
-    return null;
+    return (
+      text.includes("sadly") ||
+      text.includes("cheering from afar") ||
+      text.includes("i'll miss") ||
+      text.includes("ill miss") ||
+      text.includes("miss the fun") ||
+      text.includes("not attending") ||
+      text.includes("not attend") ||
+      text === "no" ||
+      text === "nope" ||
+      text.includes("can't come") ||
+      text.includes("cant come") ||
+      text.includes("cannot come") ||
+      text.includes("won't come") ||
+      text.includes("wont come") ||
+      text.includes("unable to attend") ||
+      text.includes("not joining") ||
+      text.includes("مش هاجي") ||
+      text.includes("مش هقدر") ||
+      text.includes("مش هقدر أجي") ||
+      text.includes("مقدر أجي") ||
+      text.includes("مقدر") ||
+      (text.includes("أجي") && text.includes("مش"))
+    );
   };
 
 
-  for(const answer of [...notAnswers, ...yesAnswers, ...questionAnswers]){
-    const directStatus = checkBooleanValue(answer);
-    if(directStatus){
-      return directStatus;
+  const hasYesAnswer = (value) => {
+    const text = normalizeText(value);
+
+    if(!text){
+      return false;
     }
-  }
-
-
-  /*
-    FIRST:
-    Explicit NOT ATTENDING.
-
-    This is deliberately checked before Attending.
-  */
-
-  const allNotAnswers =
-    [
-      ...notAnswers,
-      ...questionAnswers
-    ];
-
-
-  for(const answer of allNotAnswers){
 
     if(
-      answer.includes("sadly") ||
-      answer.includes("cheering from afar") ||
-      answer.includes("i'll miss") ||
-      answer.includes("ill miss") ||
-      answer.includes("miss the fun") ||
-      answer.includes("not attending") ||
-      answer.includes("not attend") ||
-      answer === "no" ||
-      answer === "nope" ||
-      answer.includes("can't come") ||
-      answer.includes("cant come") ||
-      answer.includes("cannot come") ||
-      answer.includes("won't come") ||
-      answer.includes("wont come") ||
-      answer.includes("unable to attend") ||
-      answer.includes("not joining") ||
-      answer.includes("مش هاجي") ||
-      answer.includes("مش هقدر") ||
-      answer.includes("مش هقدر أجي") ||
-      answer.includes("مقدر أجي") ||
-      answer.includes("مقدر") ||
-      answer.includes("أجي") && answer.includes("مش")
+      text === "true" ||
+      text === "yes" ||
+      text === "1"
     ){
+      return true;
+    }
 
+    return (
+      text.includes("absolutely") ||
+      text.includes("wouldn't miss it") ||
+      text.includes("would not miss it") ||
+      text.includes("hell yes") ||
+      text.includes("i'm coming") ||
+      text.includes("im coming") ||
+      text.includes("i am coming") ||
+      text.includes("coming") ||
+      text.includes("attending") ||
+      text.includes("will attend") ||
+      text === "yes" ||
+      text.startsWith("yes ") ||
+      text.includes("joining") ||
+      text.includes("i'll be there") ||
+      text.includes("ill be there") ||
+      text.includes("see you there") ||
+      text.includes("مش هفوتها") ||
+      text.includes("هاجي") ||
+      text.includes("طبعا جاية") ||
+      text.includes("جاية")
+    );
+  };
+
+
+  for(const answer of answerSet){
+    if(hasNotAnswer(answer)){
       return "not";
-
     }
-
   }
 
 
-  /*
-    SECOND:
-    Explicit ATTENDING.
-
-    We only inspect RSVP-related fields.
-  */
-
-  const allYesAnswers =
-    [
-      ...yesAnswers,
-      ...questionAnswers
-    ];
-
-
-  for(const answer of allYesAnswers){
-
-    if(
-      answer.includes("absolutely") ||
-      answer.includes("wouldn't miss it") ||
-      answer.includes("would not miss it") ||
-      answer.includes("hell yes") ||
-      answer.includes("i'm coming") ||
-      answer.includes("im coming") ||
-      answer.includes("i am coming") ||
-      answer.includes("coming") ||
-      answer.includes("attending") ||
-      answer.includes("will attend") ||
-      answer === "yes" ||
-      answer.startsWith("yes ") ||
-      answer.includes("joining") ||
-      answer.includes("i'll be there") ||
-      answer.includes("ill be there") ||
-      answer.includes("see you there") ||
-      answer.includes("مش هفوتها") ||
-      answer.includes("هاجي") ||
-      answer.includes("طبعا جاية") ||
-      answer.includes("جاية")
-    ){
-
+  for(const answer of answerSet){
+    if(hasYesAnswer(answer)){
       return "attending";
-
     }
-
   }
 
 
@@ -2666,8 +2607,17 @@ function getStatus(row,columns){
 
 async function loadData(){
 
-  const cacheKey = "zekra_cache_v1";
+  const cacheKey = "zekra_cache_v2";
+  const legacyCacheKey = "zekra_cache_v1";
   let hadCached = false;
+
+  try{
+    if(localStorage.getItem(legacyCacheKey)){
+      localStorage.removeItem(legacyCacheKey);
+    }
+  }catch(e){
+    console.warn("Could not clear legacy cache", e);
+  }
 
   // Try to render cached data immediately to avoid a long blank state
   try{
