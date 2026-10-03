@@ -2339,6 +2339,10 @@ let currentMessageList = [];
 
 let currentMessageIndex = 0;
 
+let isLoadingData = false;
+
+let latestLoadToken = 0;
+
 
 /* =========================================================
    HELPERS
@@ -2473,128 +2477,144 @@ function findColumn(headers,candidates){
 
 function getStatus(row,columns){
 
-  const rawValues = [];
+  /*
+    IMPORTANT:
+    The main RSVP question is the source of truth.
 
-  if(Array.isArray(row.raw)){
-    for(const value of row.raw){
-      const normalized = normalizeText(value);
-      if(normalized){
-        rawValues.push(normalized);
+    Example:
+      ❤️ هتكوني معانا؟ = "💃🏻! طبعا جاية"  -> attending
+      ❤️ هتكوني معانا؟ = "🥹 مش هقدر أجي" -> not
+
+    Do NOT scan the entire row when the main question exists.
+    The row also contains TRUE/FALSE helper columns for the two
+    conditional options, and scanning those columns makes an
+    attending response look like "not" because its opposite option
+    is FALSE.
+  */
+
+  const questionValue =
+    columns.question !== -1
+      ? normalizeText(row[columns.question])
+      : "";
+
+  if(questionValue){
+
+    const hasNotAnswer = (value) => {
+      const text = normalizeText(value);
+
+      if(!text){
+        return false;
       }
-    }
-  }
 
+      return (
+        text === "false" ||
+        text === "no" ||
+        text === "0" ||
+        text.includes("sadly") ||
+        text.includes("cheering from afar") ||
+        text.includes("i'll miss") ||
+        text.includes("ill miss") ||
+        text.includes("miss the fun") ||
+        text.includes("not attending") ||
+        text.includes("not attend") ||
+        text === "nope" ||
+        text.includes("can't come") ||
+        text.includes("cant come") ||
+        text.includes("cannot come") ||
+        text.includes("won't come") ||
+        text.includes("wont come") ||
+        text.includes("unable to attend") ||
+        text.includes("not joining") ||
+        text.includes("مش هاجي") ||
+        text.includes("مش هقدر") ||
+        text.includes("مش هقدر أجي") ||
+        text.includes("مقدر أجي") ||
+        text.includes("مقدر") ||
+        (text.includes("أجي") && text.includes("مش"))
+      );
+    };
 
-  const answerSet =
-    [
-      ...(columns.notAttending !== -1
-        ? [normalizeText(row[columns.notAttending])]
-        : []),
-      ...(columns.attending !== -1
-        ? [normalizeText(row[columns.attending])]
-        : []),
-      ...(columns.question !== -1
-        ? [normalizeText(row[columns.question])]
-        : []),
-      ...rawValues
-    ].filter(Boolean);
+    const hasYesAnswer = (value) => {
+      const text = normalizeText(value);
 
+      if(!text){
+        return false;
+      }
 
-  const hasNotAnswer = (value) => {
-    const text = normalizeText(value);
+      return (
+        text === "true" ||
+        text === "yes" ||
+        text === "1" ||
+        text.includes("absolutely") ||
+        text.includes("wouldn't miss it") ||
+        text.includes("would not miss it") ||
+        text.includes("hell yes") ||
+        text.includes("i'm coming") ||
+        text.includes("im coming") ||
+        text.includes("i am coming") ||
+        text.includes("coming") ||
+        text.includes("attending") ||
+        text === "yes" ||
+        text.startsWith("yes ") ||
+        text.includes("joining") ||
+        text.includes("i'll be there") ||
+        text.includes("ill be there") ||
+        text.includes("see you there") ||
+        text.includes("مش هفوتها") ||
+        text.includes("هاجي") ||
+        text.includes("طبعا جاية") ||
+        text.includes("جاية")
+      );
+    };
 
-    if(!text){
-      return false;
-    }
-
-    if(
-      text === "false" ||
-      text === "no" ||
-      text === "0"
-    ){
-      return true;
-    }
-
-    return (
-      text.includes("sadly") ||
-      text.includes("cheering from afar") ||
-      text.includes("i'll miss") ||
-      text.includes("ill miss") ||
-      text.includes("miss the fun") ||
-      text.includes("not attending") ||
-      text.includes("not attend") ||
-      text === "no" ||
-      text === "nope" ||
-      text.includes("can't come") ||
-      text.includes("cant come") ||
-      text.includes("cannot come") ||
-      text.includes("won't come") ||
-      text.includes("wont come") ||
-      text.includes("unable to attend") ||
-      text.includes("not joining") ||
-      text.includes("مش هاجي") ||
-      text.includes("مش هقدر") ||
-      text.includes("مش هقدر أجي") ||
-      text.includes("مقدر أجي") ||
-      text.includes("مقدر") ||
-      (text.includes("أجي") && text.includes("مش"))
-    );
-  };
-
-
-  const hasYesAnswer = (value) => {
-    const text = normalizeText(value);
-
-    if(!text){
-      return false;
-    }
-
-    if(
-      text === "true" ||
-      text === "yes" ||
-      text === "1"
-    ){
-      return true;
-    }
-
-    return (
-      text.includes("absolutely") ||
-      text.includes("wouldn't miss it") ||
-      text.includes("would not miss it") ||
-      text.includes("hell yes") ||
-      text.includes("i'm coming") ||
-      text.includes("im coming") ||
-      text.includes("i am coming") ||
-      text.includes("coming") ||
-      text.includes("attending") ||
-      text.includes("will attend") ||
-      text === "yes" ||
-      text.startsWith("yes ") ||
-      text.includes("joining") ||
-      text.includes("i'll be there") ||
-      text.includes("ill be there") ||
-      text.includes("see you there") ||
-      text.includes("مش هفوتها") ||
-      text.includes("هاجي") ||
-      text.includes("طبعا جاية") ||
-      text.includes("جاية")
-    );
-  };
-
-
-  for(const answer of answerSet){
-    if(hasNotAnswer(answer)){
+    /*
+      Check the explicit main answer only.
+      This prevents the FALSE value in the opposite option column
+      from overriding a valid "attending" answer.
+    */
+    if(hasNotAnswer(questionValue)){
       return "not";
     }
-  }
 
-
-  for(const answer of answerSet){
-    if(hasYesAnswer(answer)){
+    if(hasYesAnswer(questionValue)){
       return "attending";
     }
+
+    return "unknown";
   }
 
+
+  /*
+    Fallback for forms that don't return the main question column.
+    In that case, use the dedicated option columns only.
+    Never scan every value in the row.
+  */
+
+  const notValue =
+    columns.notAttending !== -1
+      ? normalizeText(row[columns.notAttending])
+      : "";
+
+  const attendingValue =
+    columns.attending !== -1
+      ? normalizeText(row[columns.attending])
+      : "";
+
+  if(
+    notValue === "true" ||
+    notValue === "yes" ||
+    notValue === "1"
+  ){
+    return "not";
+  }
+
+  if(
+    attendingValue === "true" ||
+    attendingValue === "yes" ||
+    attendingValue === "1"
+  ){
+    return "attending";
+  }
 
   return "unknown";
 
@@ -2606,6 +2626,14 @@ function getStatus(row,columns){
 ========================================================= */
 
 async function loadData(){
+
+  if(isLoadingData){
+    console.info("Skipping overlapping RSVP load request.");
+    return;
+  }
+
+  const requestToken = ++latestLoadToken;
+  isLoadingData = true;
 
   const cacheKey = "zekra_cache_v2";
   const legacyCacheKey = "zekra_cache_v1";
@@ -2627,8 +2655,10 @@ async function loadData(){
       if(parsed){
         hadCached = true;
         try{
-          processData(parsed);
-          showToast("Showing cached responses");
+          if(requestToken === latestLoadToken){
+            processData(parsed);
+            showToast("Showing cached responses");
+          }
         }catch(e){
           console.warn("Failed rendering cached data", e);
         }
@@ -2639,8 +2669,12 @@ async function loadData(){
   }
 
   const controller = new AbortController();
-  const timeoutMs = 8000; // 8s
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutMs = 20000; // 20s to handle cold Google Script startup
+  const timeoutId = setTimeout(() => {
+    if(requestToken === latestLoadToken){
+      controller.abort();
+    }
+  }, timeoutMs);
 
   try{
     const response = await fetch(API_URL, {
@@ -2651,11 +2685,19 @@ async function loadData(){
 
     clearTimeout(timeoutId);
 
+    if(requestToken !== latestLoadToken){
+      return;
+    }
+
     if(!response.ok){
       throw new Error("Failed to fetch data.");
     }
 
     const data = await response.json();
+
+    if(requestToken !== latestLoadToken){
+      return;
+    }
 
     try{
       localStorage.setItem(cacheKey, JSON.stringify(data));
@@ -2670,6 +2712,10 @@ async function loadData(){
   }catch(error){
 
     clearTimeout(timeoutId);
+
+    if(requestToken !== latestLoadToken){
+      return;
+    }
 
     console.error(error);
 
@@ -2686,6 +2732,10 @@ async function loadData(){
       showToast("Could not load RSVP responses.");
     }
 
+  }finally{
+    if(requestToken === latestLoadToken){
+      isLoadingData = false;
+    }
   }
 
 }
